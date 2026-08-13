@@ -7,7 +7,7 @@ from typing import Any
 import requests
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent, ToolArgument
+from mcp.types import Tool, TextContent
 
 SESSION_PATH = os.environ.get("FXIAOKE_SESSION_PATH", "fxiaoke_session.json")
 
