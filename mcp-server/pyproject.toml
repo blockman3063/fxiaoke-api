@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fxiaoke-mcp"
+version = "0.1.0"
+description = "MCP server for Fxiaoke (纷享销客) messaging"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.0.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+fxiaoke-mcp = "fxiaoke_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
