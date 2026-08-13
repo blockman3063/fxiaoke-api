@@ -1,0 +1,20 @@
+{
+  "cookies": {
+    "guid": "3ce13438-6460-4646-9a4b-3488c13cc1f7",
+    "fsRoutes": "5UJ5xKI4MdGaoVsa5iz6p2jAEVMErZocfv9AF8/Ose4=",
+    "fs_token": "PJXXCp5XOJ4jOp4rEIqqDZLYBJbYDsOjDs8rOJ8sPZ4rPZ8u",
+    "FSAuthX": "REPLACE_WITH_YOUR_VALUE",
+    "FSAuthXC": "REPLACE_WITH_YOUR_VALUE",
+    "JSESSIONID": "REPLACE_WITH_YOUR_VALUE",
+    "lang": "zh-CN"
+  },
+  "headers": {},
+  "send_url": "REPLACE_WITH_SENDMESSAGE_URL",
+  "upload_url": "REPLACE_WITH_UPLOAD_URL",
+  "session_id": "REPLACE_WITH_SESSION_ID",
+  "previous_message_id": -1,
+  "status_version": "REPLACE_WITH_STATUS_VERSION",
+  "ep_tag": "REPLACE_WITH_EP_TAG",
+  "localUniversalDefinitionTimestamp": 1786421644219,
+  "localBotDefinitionsTimestamp": 1786352692411
+}
