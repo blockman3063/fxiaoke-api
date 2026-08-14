@@ -87,12 +87,25 @@ python scripts/fxiaoke_client.py --session fxiaoke_session.json refresh
 - `send_text` — send plain text via `SendMessage`
 - `send_file` — upload file via `UploadByStream`, then send via `SendMessage`
 - `refresh` — pull fresh cookies from Edge via `browser-cookie3`
+- `get_reverse_messages` — fetch messages newest-first for listener dedup
+- `check_updated` — lightweight session-list check endpoint
+
+## Listener behavior
+
+`scripts/fxiaoke_listener_runner.py` is the active listener. It:
+
+- watches only the file-transfer-assistant BOT session `dcb28d...`
+- skips non-text messages and ignores everything that is not `senderId == 1177`
+- ignores plain text unless it starts with `!` or equals `/ping`
+- replies to `/ping` with `pong` without calling Hermes
+- sends Hermes replies with a leading `$` and uses `hermes chat -q ...` for each query to avoid stale-session history carryover
 
 ## Known limitations
 
 - `GetSessionList` currently returns 904 with the current cookie/trace combo, so session enumeration is not yet stable.
 - `GetMessages` works with the provided session fields from cURL.
 - This client uses reverse-engineered web endpoints, not the official OpenAPI.
+- The listener currently watches only the file transfer assistant session to avoid spamming Hermes on historical chat.
 
 ## Pitfalls
 

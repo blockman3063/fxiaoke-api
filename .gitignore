@@ -1,1 +1,26 @@
-scripts/
+# Listener state / session history
+listener_history.json
+
+# Logs
+listener.log
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+
+# Local env / secrets
+.env
+.fxiaoke_session.json
+fxiaoke_session.json
+
+# Build/dist artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo

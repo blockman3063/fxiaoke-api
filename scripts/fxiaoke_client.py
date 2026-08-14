@@ -72,31 +72,99 @@ class FxiaokeClient:
         resp = requests.post(url, headers=headers, cookies=self.cookies, json=payload, timeout=30)
         return resp
 
+    def _send_text(self, url, payload, extra_headers=None):
+        headers = dict(self.headers)
+        if extra_headers:
+            headers.update(extra_headers)
+        headers["content-type"] = "text/plain"
+        resp = requests.post(url, headers=headers, cookies=self.cookies, data=json.dumps(payload), timeout=30)
+        return resp
+
     def refresh_cookies_from_edge(self, domain=".fxiaoke.com"):
-        """
-        Refresh cookies from the running Edge profile.
-        Requires `browser-cookie3` to be installed.
-        """
+        """Refresh cookies from the running Edge browser."""
         try:
             import browser_cookie3
         except ImportError:
-            raise RuntimeError("browser-cookie3 is not installed. Run: pip install browser-cookie3")
+            raise RuntimeError("browser-cookie3 is not installed")
         cookies = {}
         for c in browser_cookie3.edge(domain_name=domain):
             cookies[c.name] = c.value
         if not cookies:
-            raise RuntimeError(f"No cookies found for domain={domain}. Is Edge logged into fxiaoke?")
+            raise RuntimeError(f"No cookies found for domain={domain}")
         self.configure_from_cookies(cookies)
         return cookies
+
+    def _recover_session_chain(self, context: str):
+        """Recover session chain from checkUpdatedAsyncV2 when 904 occurs."""
+        try:
+            result = self.check_updated(
+                ep_tag=self.state.get("ep_tag"),
+                status_version=self.state.get("status_version"),
+            )
+            session_list = result.get("session_list", [])
+            if session_list:
+                session_info = session_list[0]
+                new_sv = session_info.get("statusVersion") or session_info.get("updateTime")
+                new_last_msg_id = session_info.get("lastMessageId")
+                if new_sv:
+                    self.state["status_version"] = str(new_sv)
+                if new_last_msg_id is not None:
+                    self.state["previous_message_id"] = int(new_last_msg_id)
+                self.save_state()
+                return True
+        except Exception as exc:
+            raise RuntimeError(
+                f"{context} returned 904, and session chain recovery failed: {exc}"
+            ) from exc
+        return False
+
+    def _maybe_refresh_904(self, context: str, url: str, payload, content_type=None):
+        """Try request, and if it returns 904, recover session chain from server and retry once."""
+        if content_type == "text/plain":
+            resp = self._send_text(url, payload)
+        else:
+            resp = self._send_json(url, payload)
+
+        try:
+            result = self._handle_response(resp, context)
+            return result
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "904" not in msg:
+                raise
+            # Recover session chain from server and retry once
+            self._recover_session_chain(context)
+            if content_type == "text/plain":
+                resp = self._send_text(url, payload)
+            else:
+                resp = self._send_json(url, payload)
+            return self._handle_response(resp, context)
+
+    def _ensure_fresh_send_url(self) -> str:
+        send_url = self.state.get("send_url")
+        if not send_url:
+            raise RuntimeError("Missing send_url. Capture it from DevTools and pass to configure_send_url().")
+
+        sid = self.state.get("session_id")
+        if "?postId=" not in send_url or sid not in send_url:
+            return send_url
+
+        base_url, current_post_id = send_url.split("?postId=", 1)
+        prefix = current_post_id[: current_post_id.index(sid) + len(sid)]
+        suffix = current_post_id[current_post_id.index(sid) + len(sid):]
+        user_id = suffix[:4] if len(suffix) >= 4 else "1177"
+        fresh_post_id = f"{prefix}{user_id}{int(time.time() * 1000)}"
+        fresh_url = f"{base_url}?postId={fresh_post_id}"
+        self.state["send_url"] = fresh_url
+        self.save_state()
+        return fresh_url
 
     def send_text(self, text, session_id=None, previous_message_id=None, status_version=None, ep_tag=None, file_info=None, mention_at_all=False, mention_at_full_user_id_list=None):
         """
         Send a plain text message.
         Requires a configured send_url and valid session chain.
         """
-        send_url = self.state.get("send_url")
-        if not send_url:
-            raise RuntimeError("Missing send_url. Capture it from DevTools and pass to configure_send_url().")
+        send_url = self._ensure_fresh_send_url()
 
         sid = session_id or self.state.get("session_id")
         prev = previous_message_id if previous_message_id is not None else self.state.get("previous_message_id")
@@ -123,8 +191,12 @@ class FxiaokeClient:
             "localBotDefinitionsTimestamp": int(time.time() * 1000) - 86400000,
         }
 
-        resp = self._send_json(send_url, payload)
-        result = self._handle_response(resp, "send text")
+        resp = self._maybe_refresh_904("send text", send_url, payload)
+        result = resp
+        if isinstance(result, dict):
+            current = result.get("value", {}).get("currentMessage") or {}
+            result["messageId"] = current.get("messageId")
+            result["statusVersion"] = result.get("value", {}).get("statusVersion") or current.get("statusVersion")
         return result
 
     def upload_file(self, file_path):
@@ -204,8 +276,8 @@ class FxiaokeClient:
             "localBotDefinitionsTimestamp": int(time.time() * 1000) - 86400000,
         }
 
-        resp = self._send_json(send_url, payload)
-        result = self._handle_response(resp, "send file")
+        resp = self._maybe_refresh_904("send file", send_url, payload)
+        result = resp
         return result
 
     def get_messages(self, session_id, limit=20, before_message_id=None, ep_tag=None, status_version=None):
@@ -238,8 +310,8 @@ class FxiaokeClient:
             "statusVersion": sv,
         }
 
-        resp = self._send_json(get_url, payload)
-        result = self._handle_response(resp, "get_messages")
+        resp = self._maybe_refresh_904("get_messages", get_url, payload)
+        result = resp
 
         messages = result.get("value", {}).get("messageList", [])
         if not messages:
@@ -399,21 +471,20 @@ class FxiaokeClient:
             )
 
         # Update session chain from response
-        session_list = result.get("value", {}).get("sessionList", [])
+        value = result.get("value") or {}
+        session_list = value.get("sessionList", [])
         if session_list:
             real_sid = session_list[0].get("sessionId")
             if real_sid:
                 self.state["session_id"] = real_sid
 
-        current_msg = result.get("value", {}).get("currentMessage", {})
-        if current_msg:
-            msg_id = current_msg.get("messageId")
-            if msg_id is not None:
-                self.state["previous_message_id"] = msg_id
+            last_msg_id = session_list[0].get("lastMessageId")
+            if last_msg_id is not None:
+                self.state["previous_message_id"] = int(last_msg_id)
 
-            sv = result.get("value", {}).get("statusVersion")
-            if sv:
-                self.state["status_version"] = sv
+        sv = value.get("statusVersion")
+        if sv:
+            self.state["status_version"] = str(sv)
 
         self.save_state()
         return result
